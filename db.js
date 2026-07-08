@@ -73,7 +73,7 @@ function migrate() {
   }
 
   const admin = ensureDefaultAdmin();
-  db.prepare('UPDATE cards SET user_id = ? WHERE user_id IS NULL OR user_id = ""').run(admin.id);
+  db.prepare("UPDATE cards SET user_id = ? WHERE user_id IS NULL OR user_id = ''").run(admin.id);
 }
 
 function ensureDefaultAdmin() {
