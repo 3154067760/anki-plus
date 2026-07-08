@@ -454,6 +454,45 @@ async function saveSettings() {
   toast('设置已保存');
 }
 
+async function exportBackup() {
+  const res = await fetch('/api/export');
+  if (!res.ok) throw new Error('导出失败');
+  const data = await res.json();
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `anki-plus-backup-${date}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(`已导出 ${data.cards?.length || 0} 张卡片`);
+}
+
+async function importBackup(file) {
+  if (!file) return;
+  const mode = document.querySelector('input[name="importMode"]:checked')?.value || 'merge';
+  if (mode === 'replace' && !confirm('覆盖导入将删除所有现有卡片，确定继续？')) return;
+
+  const text = await file.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    toast('文件格式无效');
+    return;
+  }
+  if (!data.cards?.length) {
+    toast('文件中没有卡片');
+    return;
+  }
+
+  const result = await api('/import', { method: 'POST', body: { ...data, mode } });
+  toast(`导入完成：新增 ${result.imported} 张，跳过 ${result.skipped} 张`);
+  refreshStats();
+  if (state.cardListFilter) loadCardList(state.cardListFilter);
+  $('#importFileInput').value = '';
+}
+
 function init() {
   $$('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
@@ -549,6 +588,11 @@ function init() {
   $('#closeCardDetailBtn').addEventListener('click', closeCardDetail);
   $('#modalBackdrop').addEventListener('click', closeCardDetail);
   $('#deleteCardBtn').addEventListener('click', deleteDetailCard);
+
+  $('#exportBtn').addEventListener('click', () => exportBackup().catch(e => toast(e.message)));
+  $('#importFileInput').addEventListener('change', (e) => {
+    importBackup(e.target.files[0]).catch(err => toast(err.message));
+  });
 
   refreshStats();
 }

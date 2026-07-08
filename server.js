@@ -110,6 +110,26 @@ app.put('/api/settings', (req, res) => {
   res.json(settings);
 });
 
+app.get('/api/export', (_req, res) => {
+  const data = db.exportData();
+  const date = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Disposition', `attachment; filename="anki-plus-backup-${date}.json"`);
+  res.json(data);
+});
+
+app.post('/api/import', (req, res) => {
+  const mode = req.body.mode === 'replace' ? 'replace' : 'merge';
+  if (!req.body.cards || !Array.isArray(req.body.cards)) {
+    return res.status(400).json({ error: '缺少 cards 数组' });
+  }
+  try {
+    const result = db.importData(req.body, mode);
+    res.json({ ...result, stats: getStatsResponse() });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.post('/api/upload', upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: '未收到文件' });
   res.json({ url: `/uploads/${req.file.filename}` });

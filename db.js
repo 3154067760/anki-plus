@@ -110,6 +110,10 @@ const cardQueries = {
     INSERT INTO cards (id, front_text, back_text, front_images, back_images, front_audio, back_audio, due_date, created_at, updated_at)
     VALUES (@id, @front_text, @back_text, @front_images, @back_images, @front_audio, @back_audio, @due_date, @created_at, @updated_at)
   `),
+  insertFull: db.prepare(`
+    INSERT INTO cards (id, front_text, back_text, front_images, back_images, front_audio, back_audio, ease, interval, repetitions, due_date, created_at, updated_at)
+    VALUES (@id, @front_text, @back_text, @front_images, @back_images, @front_audio, @back_audio, @ease, @interval, @repetitions, @due_date, @created_at, @updated_at)
+  `),
   update: db.prepare(`
     UPDATE cards SET
       front_text = @front_text, back_text = @back_text,
@@ -120,6 +124,7 @@ const cardQueries = {
     WHERE id = @id
   `),
   delete: db.prepare('DELETE FROM cards WHERE id = ?'),
+  deleteAll: db.prepare('DELETE FROM cards'),
   stats: db.prepare(`
     SELECT
       COUNT(*) as total,
@@ -197,6 +202,65 @@ function deleteCard(id) {
   return card;
 }
 
+function toCardRow(card) {
+  const now = Date.now();
+  return {
+    id: card.id,
+    front_text: card.front_text || '',
+    back_text: card.back_text || '',
+    front_images: JSON.stringify(card.front_images || []),
+    back_images: JSON.stringify(card.back_images || []),
+    front_audio: card.front_audio || '',
+    back_audio: card.back_audio || '',
+    ease: card.ease ?? 2.5,
+    interval: card.interval ?? 0,
+    repetitions: card.repetitions ?? 0,
+    due_date: card.due_date ?? now,
+    created_at: card.created_at ?? now,
+    updated_at: card.updated_at ?? now
+  };
+}
+
+function exportData() {
+  return {
+    version: 1,
+    app: 'anki-plus',
+    exported_at: Date.now(),
+    settings: getSettings(),
+    cards: getAllCards()
+  };
+}
+
+function importData(payload, mode = 'merge') {
+  const cards = payload.cards || [];
+  if (!Array.isArray(cards)) throw new Error('无效的卡片数据');
+
+  let imported = 0;
+  let skipped = 0;
+
+  const tx = db.transaction(() => {
+    if (mode === 'replace') {
+      cardQueries.deleteAll.run();
+      if (payload.settings) setSettings(payload.settings);
+    } else if (payload.settings) {
+      setSettings({ ...getSettings(), ...payload.settings });
+    }
+
+    for (const card of cards) {
+      if (!card.id) { skipped++; continue; }
+      if (mode === 'merge' && cardQueries.getById.get(card.id)) {
+        skipped++;
+        continue;
+      }
+      cardQueries.insertFull.run(toCardRow(card));
+      imported++;
+    }
+  });
+  tx();
+
+  return { imported, skipped, total: cards.length };
+}
+
 module.exports = {
   db,
   DATA_DIR,
@@ -213,5 +277,7 @@ module.exports = {
   getStats,
   createCard,
   updateCard,
-  deleteCard
+  deleteCard,
+  exportData,
+  importData
 };
