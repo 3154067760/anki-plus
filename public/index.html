@@ -9,6 +9,18 @@
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
+  <!-- 登录页 -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <h1 class="logo">Anki-plus</h1>
+      <p class="login-desc">登录后开始学习</p>
+      <input type="text" id="loginUser" class="login-input" placeholder="用户名" autocomplete="username">
+      <input type="password" id="loginPass" class="login-input" placeholder="密码" autocomplete="current-password">
+      <button type="button" class="btn btn-primary btn-lg login-btn" id="loginBtn">登录</button>
+    </div>
+  </div>
+
+  <div id="appMain" class="hidden">
   <header class="header">
     <div class="header-inner">
       <h1 class="logo">Anki-plus</h1>
@@ -18,7 +30,11 @@
         <button class="tab" data-tab="review">今日复习</button>
         <button class="tab" data-tab="settings">系统设置</button>
       </nav>
-      <div class="due-badge"><span id="dueCount">0</span> 待复习</div>
+      <div class="header-right">
+        <div class="due-badge"><span id="dueCount">0</span> 待复习</div>
+        <span class="user-badge" id="userBadge"></span>
+        <button type="button" class="btn btn-outline btn-sm" id="logoutBtn">退出</button>
+      </div>
     </div>
   </header>
 
@@ -216,9 +232,22 @@
           <label><input type="radio" name="importMode" value="merge" checked> 合并导入（跳过重复卡片）</label>
           <label><input type="radio" name="importMode" value="replace"> 覆盖导入（清空现有数据）</label>
         </div>
+
+        <div id="adminSection" class="hidden">
+          <hr class="divider">
+          <h2>用户管理</h2>
+          <p class="settings-desc">管理员可添加或删除用户，每个用户数据独立</p>
+          <div class="add-user-form">
+            <input type="text" id="newUsername" class="search-input" placeholder="新用户名">
+            <input type="password" id="newPassword" class="search-input" placeholder="密码（至少4位）">
+            <button type="button" class="btn btn-primary" id="addUserBtn">添加用户</button>
+          </div>
+          <div id="userListBody" class="user-list"></div>
+        </div>
       </div>
     </section>
   </main>
+  </div>
 
   <div id="cardDetailModal" class="modal hidden">
     <div class="modal-backdrop" id="modalBackdrop"></div>

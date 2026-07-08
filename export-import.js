@@ -16,22 +16,27 @@ function exportZip(data, uploadsDir, res, filename) {
 
   archive.append(JSON.stringify(data, null, 2), { name: 'backup.json' });
   if (fs.existsSync(uploadsDir)) {
-    const files = fs.readdirSync(uploadsDir);
-    for (const file of files) {
-      const full = path.join(uploadsDir, file);
-      if (fs.statSync(full).isFile()) {
-        archive.file(full, { name: `uploads/${file}` });
-      }
-    }
+    addDirToArchive(archive, uploadsDir, 'uploads');
   }
   return archive.finalize();
 }
 
+function addDirToArchive(archive, dirPath, zipPath) {
+  for (const name of fs.readdirSync(dirPath)) {
+    const full = path.join(dirPath, name);
+    const entry = zipPath ? `${zipPath}/${name}` : name;
+    if (fs.statSync(full).isDirectory()) {
+      addDirToArchive(archive, full, entry);
+    } else {
+      archive.file(full, { name: entry });
+    }
+  }
+}
+
 function clearUploads(uploadsDir) {
   if (!fs.existsSync(uploadsDir)) return;
-  for (const file of fs.readdirSync(uploadsDir)) {
-    fs.unlinkSync(path.join(uploadsDir, file));
-  }
+  fs.rmSync(uploadsDir, { recursive: true, force: true });
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
 function importZip(zipPath, uploadsDir, importDataFn, mode) {
@@ -47,10 +52,11 @@ function importZip(zipPath, uploadsDir, importDataFn, mode) {
   let mediaCount = 0;
   for (const entry of zip.getEntries()) {
     if (!entry.entryName.startsWith('uploads/') || entry.isDirectory) continue;
-    const filename = path.basename(entry.entryName);
-    if (!filename) continue;
-    const dest = path.join(uploadsDir, filename);
+    const rel = entry.entryName.slice('uploads/'.length);
+    if (!rel) continue;
+    const dest = path.join(uploadsDir, rel);
     if (mode === 'merge' && fs.existsSync(dest)) continue;
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, entry.getData());
     mediaCount++;
   }

@@ -1,4 +1,8 @@
+const TOKEN_KEY = 'anki-plus-token';
+
 const state = {
+  user: null,
+  token: localStorage.getItem(TOKEN_KEY) || '',
   frontImages: [],
   backImages: [],
   frontAudio: '',
@@ -15,20 +19,115 @@ const state = {
 
 const FILTER_TITLES = { all: '总卡片', due: '待复习', new: '新卡片' };
 
+const isAdmin = () => state.user?.role === 'admin';
+
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 
 async function api(path, opts = {}) {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined
-  });
+  const headers = { ...(opts.headers || {}) };
+  if (!(opts.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+
+  const res = await fetch(`/api${path}`, { ...opts, headers, body: opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined) });
+
+  if (res.status === 401) {
+    logout();
+    throw new Error('请重新登录');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || res.statusText);
   }
   return res.json();
+}
+
+function showApp() {
+  $('#loginScreen').classList.add('hidden');
+  $('#appMain').classList.remove('hidden');
+  $('#userBadge').textContent = state.user?.username || '';
+  if (isAdmin()) {
+    $('#adminSection').classList.remove('hidden');
+  } else {
+    $('#adminSection').classList.add('hidden');
+  }
+  refreshStats();
+}
+
+function showLogin() {
+  $('#loginScreen').classList.remove('hidden');
+  $('#appMain').classList.add('hidden');
+}
+
+async function login() {
+  const username = $('#loginUser').value.trim();
+  const password = $('#loginPass').value;
+  if (!username || !password) { toast('请输入用户名和密码'); return; }
+
+  const res = await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '登录失败');
+
+  state.token = data.token;
+  state.user = data.user;
+  localStorage.setItem(TOKEN_KEY, data.token);
+  showApp();
+  if (isAdmin()) loadUserList();
+}
+
+function logout() {
+  state.token = '';
+  state.user = null;
+  localStorage.removeItem(TOKEN_KEY);
+  showLogin();
+}
+
+async function checkAuth() {
+  if (!state.token) { showLogin(); return false; }
+  try {
+    const data = await api('/auth/me');
+    state.user = data;
+    showApp();
+    if (isAdmin()) loadUserList();
+    return true;
+  } catch {
+    showLogin();
+    return false;
+  }
+}
+
+async function loadUserList() {
+  const users = await api('/users');
+  const body = $('#userListBody');
+  if (!users.length) { body.innerHTML = '<p class="manage-hint">暂无用户</p>'; return; }
+  body.innerHTML = users.map(u => `
+    <div class="user-list-item">
+      <span>${escapeHtml(u.username)} ${u.role === 'admin' ? '<span class="card-list-badge due">管理员</span>' : ''}</span>
+      ${u.username !== 'gyq' ? `<button type="button" class="btn btn-danger btn-sm user-del-btn" data-id="${u.id}">删除</button>` : ''}
+    </div>
+  `).join('');
+}
+
+async function addUser() {
+  const username = $('#newUsername').value.trim();
+  const password = $('#newPassword').value;
+  if (!username || !password) { toast('请填写用户名和密码'); return; }
+  await api('/users', { method: 'POST', body: { username, password } });
+  toast(`用户 ${username} 已创建`);
+  $('#newUsername').value = '';
+  $('#newPassword').value = '';
+  loadUserList();
+}
+
+async function deleteUser(id) {
+  if (!confirm('删除用户将同时删除其所有卡片，确定？')) return;
+  await api(`/users/${id}`, { method: 'DELETE' });
+  toast('用户已删除');
+  loadUserList();
 }
 
 function toast(msg) {
@@ -226,10 +325,16 @@ function renderAudio(side) {
   el.innerHTML = url ? `<audio controls src="${url}"></audio>` : '';
 }
 
+function authHeaders(extra = {}) {
+  const h = { ...extra };
+  if (state.token) h['Authorization'] = `Bearer ${state.token}`;
+  return h;
+}
+
 async function uploadFile(file) {
   const fd = new FormData();
   fd.append('file', file);
-  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+  const res = await fetch('/api/upload', { method: 'POST', headers: authHeaders(), body: fd });
   if (!res.ok) throw new Error('上传失败');
   const data = await res.json();
   return data.url;
@@ -238,7 +343,7 @@ async function uploadFile(file) {
 async function uploadFiles(files) {
   const fd = new FormData();
   for (const f of files) fd.append('files', f);
-  const res = await fetch('/api/upload/batch', { method: 'POST', body: fd });
+  const res = await fetch('/api/upload/batch', { method: 'POST', headers: authHeaders(), body: fd });
   if (!res.ok) throw new Error('上传失败');
   const data = await res.json();
   return data.urls;
@@ -331,6 +436,14 @@ async function toggleRecording(side) {
   const btn = side === 'front' ? $('#frontRecordBtn') : $('#backRecordBtn');
   if (state.mediaRecorder?.state === 'recording' && state.recordingSide === side) {
     state.mediaRecorder.stop();
+    return;
+  }
+  if (!window.isSecureContext) {
+    toast('录音需要 HTTPS 或 localhost，请改用「上传 MP3」');
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    toast('当前浏览器不支持录音');
     return;
   }
   try {
@@ -435,6 +548,7 @@ async function loadSettings() {
   $('#newCardsPerDay').value = s.newCardsPerDay;
   $('#reviewsPerDay').value = s.reviewsPerDay;
   refreshStats();
+  if (isAdmin()) loadUserList();
 }
 
 async function saveSettings() {
@@ -455,7 +569,7 @@ async function saveSettings() {
 }
 
 async function exportBackup() {
-  const res = await fetch('/api/export');
+  const res = await fetch('/api/export', { headers: authHeaders() });
   if (!res.ok) throw new Error('导出失败');
   const date = new Date().toISOString().slice(0, 10);
   const blob = await res.blob();
@@ -476,7 +590,7 @@ async function importBackup(file) {
   fd.append('file', file);
   fd.append('mode', mode);
 
-  const res = await fetch('/api/import', { method: 'POST', body: fd });
+  const res = await fetch('/api/import', { method: 'POST', headers: authHeaders(), body: fd });
   const result = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(result.error || '导入失败');
 
@@ -587,7 +701,18 @@ function init() {
     importBackup(e.target.files[0]).catch(err => toast(err.message));
   });
 
-  refreshStats();
+  $('#loginBtn').addEventListener('click', () => login().catch(e => toast(e.message)));
+  $('#loginPass').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') login().catch(err => toast(err.message));
+  });
+  $('#logoutBtn').addEventListener('click', logout);
+  $('#addUserBtn').addEventListener('click', () => addUser().catch(e => toast(e.message)));
+  $('#userListBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.user-del-btn');
+    if (btn) deleteUser(btn.dataset.id).catch(err => toast(err.message));
+  });
+
+  checkAuth();
 }
 
 init();
