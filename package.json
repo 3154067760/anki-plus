@@ -1,0 +1,16 @@
+{
+  "name": "anki-plus",
+  "version": "1.0.0",
+  "description": "Anki-plus - 本地存储的间隔重复记忆卡片应用",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^11.0.3"
+  }
+}
