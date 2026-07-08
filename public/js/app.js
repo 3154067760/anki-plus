@@ -457,37 +457,30 @@ async function saveSettings() {
 async function exportBackup() {
   const res = await fetch('/api/export');
   if (!res.ok) throw new Error('导出失败');
-  const data = await res.json();
   const date = new Date().toISOString().slice(0, 10);
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const blob = await res.blob();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `anki-plus-backup-${date}.json`;
+  a.download = `anki-plus-backup-${date}.zip`;
   a.click();
   URL.revokeObjectURL(a.href);
-  toast(`已导出 ${data.cards?.length || 0} 张卡片`);
+  toast('ZIP 备份已开始下载（含图片和音频）');
 }
 
 async function importBackup(file) {
   if (!file) return;
   const mode = document.querySelector('input[name="importMode"]:checked')?.value || 'merge';
-  if (mode === 'replace' && !confirm('覆盖导入将删除所有现有卡片，确定继续？')) return;
+  if (mode === 'replace' && !confirm('覆盖导入将删除所有现有卡片和媒体，确定继续？')) return;
 
-  const text = await file.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    toast('文件格式无效');
-    return;
-  }
-  if (!data.cards?.length) {
-    toast('文件中没有卡片');
-    return;
-  }
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('mode', mode);
 
-  const result = await api('/import', { method: 'POST', body: { ...data, mode } });
-  toast(`导入完成：新增 ${result.imported} 张，跳过 ${result.skipped} 张`);
+  const res = await fetch('/api/import', { method: 'POST', body: fd });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(result.error || '导入失败');
+
+  toast(`导入完成：新增 ${result.imported} 张，跳过 ${result.skipped} 张，媒体 ${result.mediaCount || 0} 个`);
   refreshStats();
   if (state.cardListFilter) loadCardList(state.cardListFilter);
   $('#importFileInput').value = '';

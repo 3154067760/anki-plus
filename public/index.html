@@ -204,12 +204,12 @@
         <hr class="divider">
 
         <h2>导入 / 导出</h2>
-        <p class="settings-desc">导出为 JSON 备份文件，可在其他设备或服务器导入。图片/音频需同时备份 data/uploads 目录。</p>
+        <p class="settings-desc">导出 ZIP 备份包，包含所有卡片、复习进度、图片和音频文件，换设备或服务器可直接恢复。</p>
         <div class="import-export-actions">
-          <button type="button" class="btn btn-primary" id="exportBtn">导出备份</button>
+          <button type="button" class="btn btn-primary" id="exportBtn">导出 ZIP 备份</button>
           <label class="btn btn-outline">
-            选择文件导入
-            <input type="file" accept=".json,application/json" hidden id="importFileInput">
+            选择 ZIP 导入
+            <input type="file" accept=".zip,application/zip" hidden id="importFileInput">
           </label>
         </div>
         <div class="import-mode">

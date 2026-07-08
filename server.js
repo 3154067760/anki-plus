@@ -1,10 +1,12 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const os = require('os');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const { reviewCard, previewIntervals, formatInterval } = require('./sm2');
+const { exportZip, importZip } = require('./export-import');
 
 const app = express();
 const PORT = process.env.PORT || 3030;
@@ -17,6 +19,10 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } });
+const importUpload = multer({
+  dest: path.join(os.tmpdir(), 'anki-import'),
+  limits: { fileSize: 200 * 1024 * 1024 }
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(db.UPLOADS_DIR));
@@ -113,14 +119,26 @@ app.put('/api/settings', (req, res) => {
 app.get('/api/export', (_req, res) => {
   const data = db.exportData();
   const date = new Date().toISOString().slice(0, 10);
-  res.setHeader('Content-Disposition', `attachment; filename="anki-plus-backup-${date}.json"`);
-  res.json(data);
+  const filename = `anki-plus-backup-${date}.zip`;
+  exportZip(data, db.UPLOADS_DIR, res, filename);
 });
 
-app.post('/api/import', (req, res) => {
+app.post('/api/import', importUpload.single('file'), (req, res) => {
   const mode = req.body.mode === 'replace' ? 'replace' : 'merge';
+
+  if (req.file) {
+    try {
+      const result = importZip(req.file.path, db.UPLOADS_DIR, db.importData, mode);
+      fs.unlinkSync(req.file.path);
+      return res.json({ ...result, stats: getStatsResponse() });
+    } catch (e) {
+      if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: e.message });
+    }
+  }
+
   if (!req.body.cards || !Array.isArray(req.body.cards)) {
-    return res.status(400).json({ error: '缺少 cards 数组' });
+    return res.status(400).json({ error: '请上传 ZIP 备份文件' });
   }
   try {
     const result = db.importData(req.body, mode);
